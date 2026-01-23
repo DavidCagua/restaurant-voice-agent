@@ -1,0 +1,25 @@
+{
+  "name": "restaurant-monorepo",
+  "version": "1.0.0",
+  "description": "Restaurant management system monorepo",
+  "private": true,
+  "workspaces": [
+    "restaurant-api"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=restaurant-api",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "docker:up": "npm run docker:up --workspace=restaurant-api",
+    "docker:down": "npm run docker:down --workspace=restaurant-api"
+  },
+  "devDependencies": {
+    "@types/node": "^18.11.9",
+    "typescript": "^4.8.4"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  }
+}
