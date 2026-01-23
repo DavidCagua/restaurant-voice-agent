@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Address" ALTER COLUMN "state" SET DATA TYPE VARCHAR(50);

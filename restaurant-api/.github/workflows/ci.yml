@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Create env file
+        run: |
+          touch .env
+          echo ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }} >> .env
+          cat .env
+
+      - name: Start containers
+        run: npm run docker:up
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test
+
+      - name: Stop containers
+        if: always()
+        run: npm run docker:down
+        
+  lint-styles:
+    name: Lint Styles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+
+  lint-commits:
+    name: Lint Commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v5
