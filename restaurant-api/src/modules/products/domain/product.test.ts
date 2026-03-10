@@ -16,6 +16,7 @@ describe('Create a new product (entity)', () => {
       images: ['https://example.com/margherita.jpg'],
       available: true,
       createdBy: uuid(),
+      category: 'Burgers',
     };
   });
 
