@@ -11,6 +11,7 @@ export interface CreateProductBodyProps {
   discount: number | null;
   available: boolean;
   images: string[];
+  category?: string;
 }
 
 export class CreateProductController {
@@ -24,6 +25,7 @@ export class CreateProductController {
       description,
       images,
       available,
+      category,
     }: CreateProductBodyProps = await request.body;
 
     if (
@@ -52,6 +54,7 @@ export class CreateProductController {
         description,
         images,
         available,
+        category,
       });
 
       if (responseOrError.isLeft()) {

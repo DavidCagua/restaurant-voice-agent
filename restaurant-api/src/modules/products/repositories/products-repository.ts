@@ -7,7 +7,8 @@ export interface IProductsRepository {
   index(
     onlyAvailable: boolean,
     limit?: number,
-    offset?: number
+    offset?: number,
+    category?: string
   ): Promise<Omit<Product, 'createdBy'>[]>;
   delete(criteria: string[]): Promise<void>;
 }

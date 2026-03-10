@@ -12,6 +12,7 @@ export interface ProductDataProps {
   images: string[];
   available: boolean;
   createdBy: string;
+  category: string;
 }
 
 export class Product {
@@ -20,6 +21,7 @@ export class Product {
   readonly description: string;
   readonly price: number;
   readonly discount: number | null;
+  readonly category: string;
   readonly createdAt: string;
   readonly images: string[];
   readonly updatedAt: string;
@@ -32,6 +34,7 @@ export class Product {
       description,
       price,
       discount,
+      category,
       createdAt,
       updatedAt,
       images,
@@ -46,6 +49,7 @@ export class Product {
       description,
       price,
       discount,
+      category: category || 'Bebidas',
       createdAt,
       updatedAt,
       images,
@@ -62,6 +66,7 @@ export class Product {
     images,
     available,
     createdBy,
+    category,
   }: ProductDataProps): Either<
     InvalidImageUrlError | ValidationError,
     Product
@@ -109,6 +114,7 @@ export class Product {
         description,
         price,
         discount,
+        category: category || 'Bebidas',
         createdAt: new Date().toJSON(),
         updatedAt: new Date().toJSON(),
         images,

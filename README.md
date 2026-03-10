@@ -1,282 +1,329 @@
-# Restaurant Management System
+# Restaurant Voice Agent
 
-A comprehensive restaurant management system designed to **attend phone calls and take delivery orders** through an AI-powered voice assistant. This monorepo contains both the backend API and the LiveKit-based voice agent that work together to provide a complete solution for handling customer calls, processing orders, and managing deliveries.
+A production-ready voice AI system for restaurant order taking, built with **LiveKit** for real-time communication, **Deepgram** streaming STT, **ElevenLabs** TTS, **OpenAI** reasoning, and a **Node.js/TypeScript** backend with **Prisma** and **PostgreSQL**. The agent handles complete order workflows through natural Spanish conversation, including menu browsing, customer account creation, address management, and order processing.
 
-## 🎯 Purpose
+## Tech Stack
 
-The primary purpose of this system is to **automate the process of attending incoming phone calls and taking delivery orders** for restaurants. When customers call the restaurant, the AI voice assistant (Daniela) answers the call and:
+- **Voice Infrastructure**: LiveKit Agents (real-time WebRTC)
+- **Speech-to-Text**: Deepgram Nova-3 (streaming, multilingual)
+- **Text-to-Speech**: ElevenLabs multilingual v2
+- **Reasoning**: OpenAI GPT-4o-mini
+- **Backend API**: Node.js + Express + TypeScript
+- **Database**: PostgreSQL with Prisma ORM
+- **Integration**: Python agent → HTTP tool calls → Node/TS REST API
 
-- Greets customers in Spanish
-- Shows the menu and helps customers select items
-- Collects customer information and creates accounts
-- Gathers delivery addresses
-- Confirms orders and payment methods
-- Processes the complete order flow
+## Architecture Overview
 
-This eliminates the need for human staff to manually answer every call, allowing restaurants to handle more orders efficiently while providing a consistent, friendly customer experience.
-
-## 🏗️ Architecture
-
-This project consists of two main components:
+The system consists of two main components:
 
 ```
-restaurant/
-├── restaurant-api/     # Node.js/TypeScript REST API (Express + Prisma + PostgreSQL)
-├── agent-server/       # Python voice AI assistant (LiveKit + OpenAI + Deepgram + ElevenLabs)
-└── package.json        # Root workspace configuration (npm workspaces)
+┌─────────────────────────────────────────────────────────────┐
+│                    Voice Agent (Python)                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
+│  │ LiveKit  │→ │ Deepgram │→ │  OpenAI  │→ │ElevenLabs│   │
+│  │  (STT)   │  │  (STT)   │  │  (LLM)   │  │  (TTS)   │   │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
+│                          ↓                                   │
+│                    Tool Calls (HTTP)                         │
+└──────────────────────────┼───────────────────────────────────┘
+                           │
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│              Restaurant API (Node.js/TypeScript)            │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐                  │
+│  │ Express  │→ │  Prisma  │→ │PostgreSQL│                  │
+│  │   REST   │  │   ORM    │  │          │                  │
+│  └──────────┘  └──────────┘  └──────────┘                  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Component Overview
+**agent-server/** - Python-based LiveKit agent implementing:
+- Real-time voice session management
+- Streaming STT via Deepgram Nova-3
+- GPT-4o-mini for conversation reasoning
+- Function tools for API integration
+- ElevenLabs TTS synthesis
+- Silero VAD and multilingual turn detection
+- BVC noise cancellation
 
-**restaurant-api**: A production-ready REST API built with Express.js, TypeScript, and Prisma ORM. It handles:
-- User authentication and authorization (JWT)
+**restaurant-api/** - Node.js/TypeScript REST API providing:
+- JWT-based authentication
+- User management (CRUD)
 - Product/menu management
-- Customer account management
-- Delivery address management
-- PostgreSQL database integration
+- Address management
+- PostgreSQL persistence via Prisma
 
-**agent-server**: A Python-based voice AI assistant powered by LiveKit Agents that **answers phone calls and takes orders**. It provides:
-- Phone call handling via LiveKit telephony integration
-- Natural language voice interactions in Spanish
-- Real-time speech recognition (Deepgram)
-- GPT-4 powered conversation
-- Text-to-speech synthesis (ElevenLabs)
-- Integration with the restaurant API for order processing
+## Request/Response Flow
 
-## 🚀 Getting Started
+```
+1. Voice Input
+   ↓
+2. LiveKit Room (WebRTC connection)
+   ↓
+3. Deepgram STT (streaming transcription, multilingual)
+   ↓
+4. OpenAI GPT-4o-mini (reasoning, intent extraction)
+   ↓
+5. Tool Call Decision (if needed)
+   ↓
+6. HTTP Request → Node/TS Backend API
+   ├─ GET /v1/products (menu retrieval)
+   ├─ POST /v1/users (account creation)
+   ├─ POST /v1/addresses (address management)
+   └─ GET /v1/addresses (address retrieval)
+   ↓
+7. Prisma ORM → PostgreSQL (data persistence)
+   ↓
+8. API Response → Agent
+   ↓
+9. OpenAI generates natural language response
+   ↓
+10. ElevenLabs TTS (multilingual voice synthesis)
+    ↓
+11. LiveKit → Voice Output
+```
+
+## Local Setup
 
 ### Prerequisites
 
 - **Node.js** >= 16.0.0
 - **npm** >= 8.0.0
 - **Python** >= 3.8
-- **pip** (Python package manager)
-- **PostgreSQL** (or use Docker Compose)
+- **PostgreSQL** (or Docker Compose)
 - **Docker** and **Docker Compose** (optional, for database)
 
-### Installation
+### Installation Steps
 
-1. **Clone the repository**:
+1. **Clone and install dependencies**:
    ```bash
    git clone <repository-url>
-   cd restaurant
-   ```
-
-2. **Install Node.js dependencies**:
-   ```bash
+   cd restaurant-voice-agent
    npm install
-   ```
-
-3. **Install Python dependencies**:
-   ```bash
    cd agent-server
    pip install -r requirements.txt
-   cd ..
    ```
 
-4. **Set up environment variables**:
-   
-   For the API server:
-   ```bash
-   cp restaurant-api/.sample.env restaurant-api/.env
-   # Edit restaurant-api/.env with your configuration
-   ```
-   
-   For the agent server:
-   ```bash
-   cp agent-server/env.example agent-server/.env
-   # Edit agent-server/.env with your API keys
-   ```
-
-5. **Set up the database** (if using Docker):
+2. **Set up PostgreSQL** (using Docker):
    ```bash
    npm run docker:up
    ```
 
-6. **Run database migrations**:
+3. **Run database migrations**:
    ```bash
    cd restaurant-api
    npm run migrate:dev
-   cd ..
    ```
 
-## 🛠️ Development
+4. **Configure environment variables** (see Environment Variables section below)
 
-### Running the Services
-
-**Start the API server** (in development mode):
-```bash
-npm run dev
-# Or from the restaurant-api directory:
-cd restaurant-api
-npm run dev
-```
-
-The API will be available at `http://localhost:3000`
-
-**Start the voice agent server**:
-```bash
-cd agent-server
-python agent.py
-```
-
-The agent will connect to LiveKit and be ready to handle voice interactions.
-
-### Running Both Services
-
-For a complete setup, you'll need both services running:
-
-1. **Terminal 1** - API Server:
+5. **Start services**:
    ```bash
+   # Terminal 1: Start API server
    npm run dev
-   ```
-
-2. **Terminal 2** - Agent Server:
-   ```bash
+   
+   # Terminal 2: Start voice agent
    cd agent-server
    python agent.py
    ```
 
-## 📜 Available Scripts
+The API will be available at `http://localhost:3000` and the agent will connect to LiveKit.
 
-### Root Level Commands
+## Environment Variables
 
-- `npm run dev` - Start the API server in development mode
+### Agent Server (`agent-server/.env`)
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `LIVEKIT_URL` | LiveKit server WebSocket URL (e.g., `wss://your-livekit-server.com`) | Yes |
+| `LIVEKIT_API_KEY` | LiveKit API key | Yes |
+| `LIVEKIT_API_SECRET` | LiveKit API secret | Yes |
+| `OPENAI_API_KEY` | OpenAI API key for GPT-4o-mini | Yes |
+| `ELEVEN_API_KEY` | ElevenLabs API key for TTS (agent uses this env name) | Yes |
+| `DEEPGRAM_API_KEY` | Deepgram API key for streaming STT | Yes |
+| `DEBUG` | Enable debug logging including transcripts (set to `true` to log sensitive content) | No | `false` |
+| `BRAINTRUST_API_KEY` | Braintrust API key for tracing LLM calls and voice interactions | No | - |
+| `BRAINTRUST_PARENT` | Braintrust project identifier (e.g., `project:restaurant-voice-agent`) | No | `project:restaurant-voice-agent` |
+
+### Restaurant API (`restaurant-api/.env`)
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `PORT` | Server port | No | `3000` |
+| `DATABASE_URL` | PostgreSQL connection string | Yes | - |
+| `ACCESS_TOKEN_SECRET` | JWT secret for access tokens | Yes | - |
+| `REFRESH_TOKEN_SECRET` | JWT secret for refresh tokens | Yes | - |
+
+**Setup**:
+```bash
+# Agent server
+cp agent-server/env.example agent-server/.env
+# Edit agent-server/.env with your API keys
+
+# Restaurant API
+cp restaurant-api/.sample.env restaurant-api/.env
+# Edit restaurant-api/.env with your configuration
+```
+
+## Observability
+
+### Braintrust Tracing (Optional)
+
+When `BRAINTRUST_API_KEY` is set, the agent sends traces to [Braintrust](https://braintrust.dev) via OpenTelemetry. This captures:
+
+- Voice interactions (STT, reasoning, TTS)
+- LLM calls (OpenAI chat completions)
+- Tool executions (get_menu, create_customer_account, etc.)
+
+Add to `agent-server/.env`:
+
+```bash
+BRAINTRUST_API_KEY=your-braintrust-api-key
+BRAINTRUST_PARENT=project:restaurant-voice-agent  # optional, default shown
+```
+
+View traces in the [Braintrust app](https://www.braintrust.dev/app).
+
+### Structured JSON Logging
+
+The agent server includes structured JSON logging for performance monitoring and debugging. All logs are output as JSON with the following fields:
+
+- `session_id`: Unique session identifier
+- `user_id`: User identifier (if available)
+- `turn_id`: Conversation turn identifier
+- `tool_name`: Name of the tool being called (if applicable)
+- `latency_ms`: Latency in milliseconds
+- `model`: LLM model name (e.g., `gpt-4o-mini`)
+- `stt_provider`: STT provider (e.g., `deepgram`)
+- `tts_provider`: TTS provider (e.g., `elevenlabs`)
+- `stage`: Processing stage (`stt`, `reasoning`, `tool_call`, `tts`)
+- `event_type`: Event type (e.g., `stt_start`, `reasoning_end`, `tool_call_start`)
+
+### Timing Measurements
+
+The system tracks latency for each stage:
+- **STT**: Speech-to-text processing (receive/start events)
+- **Reasoning**: LLM processing (start/end with latency)
+- **Tool Calls**: API integration calls (start/end with latency per tool)
+- **TTS**: Text-to-speech synthesis (start/end with latency)
+
+### Debug Logging
+
+By default, **transcript text is excluded** from logs to protect sensitive user content. To enable transcript logging for debugging:
+
+```bash
+# In agent-server/.env
+DEBUG=true
+```
+
+**Warning**: Enabling DEBUG mode will log all user transcripts, which may contain sensitive information. Only use in development or with proper data handling policies.
+
+### Example Log Output
+
+```json
+{"timestamp":"2024-01-15T10:30:45.123Z","level":"INFO","message":"tool_call_start: tool_call","session_id":"abc123","turn_id":"turn-456","tool_name":"get_menu","stage":"tool_call","model":"gpt-4o-mini","stt_provider":"deepgram","tts_provider":"elevenlabs","event_type":"tool_call_start"}
+{"timestamp":"2024-01-15T10:30:45.456Z","level":"INFO","message":"tool_call_end: tool_call","session_id":"abc123","turn_id":"turn-456","tool_name":"get_menu","latency_ms":333.0,"stage":"tool_call","model":"gpt-4o-mini","stt_provider":"deepgram","tts_provider":"elevenlabs","event_type":"tool_call_end"}
+```
+
+## Deployment Notes
+
+### Agent Server
+
+- Runs as a LiveKit agent worker, connecting to LiveKit Cloud or self-hosted instance
+- Requires persistent connection to LiveKit server
+- API base URL is hardcoded to `http://localhost:3000/v1` in `restaurant_tools.py` (needs configuration for production)
+- Uses default admin account (`john@example.com`) for API authentication (should be replaced with service account)
+
+### Restaurant API
+
+- Production build: `npm run build` → `npm start`
+- Database migrations: `npm run migrate:deploy`
+- Requires PostgreSQL connection
+- JWT tokens stored in HTTP-only cookies
+- CORS and security headers should be configured for production
+
+### Production Considerations
+
+- **API URL**: Update `API_BASE_URL` in `agent-server/restaurant_tools.py` for production
+- **Authentication**: Replace hardcoded admin credentials with proper service account
+- **Error Handling**: Add retry logic and circuit breakers for API calls
+- **Monitoring**: Add logging, metrics, and health checks
+- **Scaling**: Agent workers can be horizontally scaled; API requires connection pooling
+
+## Future Improvements
+
+### High Priority
+
+- [ ] Environment-based API URL configuration (remove hardcoded localhost)
+- [ ] Service account authentication for agent → API communication
+- [ ] Order creation endpoint and persistence (currently only collects order data)
+- [ ] Error handling and retry logic for API tool calls
+- [ ] Production-ready logging and monitoring
+
+### Medium Priority
+
+- [ ] Order status tracking and updates
+- [ ] Payment processing integration
+- [ ] Multi-language support beyond Spanish
+- [ ] Conversation state persistence
+- [ ] Agent performance metrics and analytics
+
+### Low Priority
+
+- [ ] Voice cloning customization
+- [ ] Advanced noise cancellation tuning
+- [ ] Conversation replay and debugging tools
+- [ ] A/B testing for agent prompts
+
+## TODO: Items to Confirm
+
+- [ ] Order persistence: Verify if orders are saved to database or only collected in conversation
+- [ ] Payment processing: Confirm payment method collection vs. actual payment processing
+- [ ] Production deployment: Verify LiveKit deployment strategy (Cloud vs. self-hosted)
+- [ ] API authentication: Confirm service account setup for production
+- [ ] Database migrations: Verify migration strategy for production deployments
+- [ ] Rate limiting: Confirm if API has rate limiting for agent requests
+
+## Project Structure
+
+```
+restaurant-voice-agent/
+├── agent-server/              # Python LiveKit agent
+│   ├── agent.py              # Main agent implementation
+│   ├── restaurant_tools.py   # API integration functions
+│   ├── requirements.txt      # Python dependencies
+│   └── .env                  # Agent environment variables
+│
+└── restaurant-api/            # Node.js/TypeScript REST API
+    ├── src/
+    │   ├── modules/          # Domain modules (users, products, addresses)
+    │   ├── infra/            # Infrastructure (HTTP, Prisma)
+    │   └── core/             # Core utilities
+    ├── src/infra/prisma/     # Prisma schema and migrations
+    └── .env                  # API environment variables
+```
+
+## Development
+
+### Running Tests
+
+```bash
+# API tests
+npm run test --workspace=restaurant-api
+
+# Agent (manual testing via debug utilities)
+cd agent-server
+python debug_menu.py
+```
+
+### Available Scripts
+
+- `npm run dev` - Start API server in development mode
 - `npm run build` - Build all workspaces
 - `npm run test` - Run tests for all workspaces
-- `npm run lint` - Lint all workspaces
-- `npm run docker:up` - Start Docker services (PostgreSQL)
+- `npm run docker:up` - Start PostgreSQL via Docker
 - `npm run docker:down` - Stop Docker services
 
-### Workspace-specific Commands
-
-To run commands for a specific workspace:
-
-```bash
-# Run dev for restaurant-api only
-npm run dev --workspace=restaurant-api
-
-# Run tests for restaurant-api
-npm run test --workspace=restaurant-api
-
-# Install a package in a specific workspace
-npm install express --workspace=restaurant-api
-```
-
-## 🔧 Configuration
-
-### Restaurant API Configuration
-
-The API requires the following environment variables (see `restaurant-api/.sample.env`):
-
-- `PORT` - Server port (default: 3000)
-- `DATABASE_URL` - PostgreSQL connection string
-- `ACCESS_TOKEN_SECRET` - JWT secret for access tokens
-- `REFRESH_TOKEN_SECRET` - JWT secret for refresh tokens
-
-### Agent Server Configuration
-
-The agent requires the following environment variables (see `agent-server/env.example`):
-
-- `LIVEKIT_URL` - LiveKit server WebSocket URL
-- `LIVEKIT_API_KEY` - LiveKit API key
-- `LIVEKIT_API_SECRET` - LiveKit API secret
-- `OPENAI_API_KEY` - OpenAI API key (for GPT-4)
-- `ELEVENLABS_API_KEY` - ElevenLabs API key (for TTS)
-- `DEEPGRAM_API_KEY` - Deepgram API key (for STT)
-
-**Note**: The agent server connects to the API at `http://localhost:3000/v1` by default. Ensure the API is running before starting the agent.
-
-## 🏛️ Workspaces
-
-### restaurant-api
-
-The main REST API server built with Express.js, TypeScript, and Prisma.
-
-**Key Features:**
-- RESTful API endpoints
-- JWT-based authentication
-- User management (registration, login, password change)
-- Product/menu management
-- Address management (CRUD operations)
-- PostgreSQL database with Prisma ORM
-- Comprehensive test coverage
-- API documentation with VitePress
-- Rate limiting and error handling
-- CI/CD pipeline with GitHub Actions
-
-**Tech Stack:**
-- Node.js + Express.js
-- TypeScript
-- Prisma ORM
-- PostgreSQL
-- Jest (testing)
-- VitePress (documentation)
-
-See [restaurant-api/README.md](./restaurant-api/README.md) for detailed API documentation.
-
-### agent-server
-
-Python-based voice AI assistant for restaurant ordering using LiveKit Agents.
-
-**Key Features:**
-- Voice-based restaurant assistant (Spanish)
-- Multi-language speech recognition (Deepgram Nova-3)
-- OpenAI GPT-4 integration for natural conversations
-- ElevenLabs multilingual text-to-speech
-- LiveKit real-time communication
-- Noise cancellation (BVC)
-- Turn detection (multilingual model)
-- Integration with restaurant API for:
-  - Menu retrieval
-  - Customer account creation
-  - Delivery address management
-  - Order processing
-
-**Tech Stack:**
-- Python 3.8+
-- LiveKit Agents
-- OpenAI GPT-4
-- Deepgram (STT)
-- ElevenLabs (TTS)
-- Silero VAD
-
-See [agent-server/README.md](./agent-server/README.md) for detailed agent documentation.
-
-## 🔗 Integration
-
-The agent server integrates with the restaurant API to:
-
-1. **Retrieve Menu**: Fetches available products from the API
-2. **Create Accounts**: Registers new customers via the API
-3. **Manage Addresses**: Saves and retrieves delivery addresses
-4. **Process Orders**: Handles the complete order flow
-
-The integration is handled through the `restaurant_tools.py` module, which provides Python functions that call the REST API endpoints.
-
-## 📚 Documentation
-
-- **API Documentation**: Available at `restaurant-api/docs/` (VitePress) or run `npm run docs:dev --workspace=restaurant-api`
-- **API Testing Guide**: See `restaurant-api/api-testing.md`
-- **Agent Documentation**: See `agent-server/README.md`
-
-## 🧪 Testing
-
-Run tests for the API:
-```bash
-npm run test --workspace=restaurant-api
-```
-
-The API includes comprehensive test coverage for use cases and endpoints.
-
-## 🤝 Contributing
-
-1. Make changes in the appropriate workspace
-2. Run tests: `npm run test`
-3. Run linting: `npm run lint`
-4. Commit your changes (follow conventional commits)
-5. Create a pull request
-
-## 📄 License
+## License
 
 ISC

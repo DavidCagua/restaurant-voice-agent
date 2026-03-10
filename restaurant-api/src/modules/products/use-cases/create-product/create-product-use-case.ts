@@ -16,6 +16,7 @@ export interface CreateProductRequest {
   discount: number | null;
   images: string[];
   available: boolean;
+  category?: string;
 }
 
 type CreateProductResponse = Either<
@@ -39,6 +40,7 @@ export class CreateProductUseCase
     discount,
     images,
     available,
+    category = 'Bebidas',
   }: CreateProductRequest): Promise<CreateProductResponse> {
     const permissions = new Permissions(
       await this.usersRepository.permissions(userId)
@@ -61,6 +63,7 @@ export class CreateProductUseCase
       images,
       available,
       createdBy: userId,
+      category,
     });
 
     if (productOrError.isLeft()) {

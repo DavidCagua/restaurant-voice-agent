@@ -10,6 +10,7 @@ export class PrismaProductsRepository implements IProductsRepository {
     description,
     price,
     discount,
+    category,
     images,
     createdAt,
     updatedAt,
@@ -23,6 +24,7 @@ export class PrismaProductsRepository implements IProductsRepository {
         description,
         price,
         discount,
+        category: category || 'Bebidas',
         images,
         created_at: createdAt,
         updated_at: updatedAt,
@@ -66,23 +68,28 @@ export class PrismaProductsRepository implements IProductsRepository {
   async index(
     onlyAvailable: boolean,
     limit?: number,
-    offset?: number
+    offset?: number,
+    category?: string
   ): Promise<Omit<Product, 'createdBy'>[]> {
     const options: Prisma.ProductFindManyArgs = {
       take: Number(limit) || undefined,
       skip: Number(offset) || undefined,
     };
 
+    const where: Prisma.ProductWhereInput = {};
+    if (onlyAvailable) {
+      where.available = onlyAvailable;
+    }
+    if (category) {
+      where.category = category;
+    }
+
     const optionsWithWhere: Prisma.ProductFindManyArgs = {
       ...options,
-      where: {
-        available: onlyAvailable,
-      },
+      ...(Object.keys(where).length > 0 ? { where } : {}),
     };
 
-    const products = await prisma.product.findMany(
-      onlyAvailable ? optionsWithWhere : options
-    );
+    const products = await prisma.product.findMany(optionsWithWhere);
 
     return products.map((product) => ({
       ...product,

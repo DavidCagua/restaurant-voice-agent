@@ -10,6 +10,7 @@ export interface GetProductsRequest {
   userId: string;
   limit?: number;
   offset?: number;
+  category?: string;
 }
 
 export type GetProductsResponse = Either<
@@ -29,6 +30,7 @@ export class GetProductsUseCase
     userId,
     limit,
     offset,
+    category,
   }: GetProductsRequest): Promise<GetProductsResponse> {
     const permissions = new Permissions(
       await this.usersRepository.permissions(userId)
@@ -43,7 +45,12 @@ export class GetProductsUseCase
 
     if (permissions.has(['product:list::all'])) {
       products.push(
-        ...(await this.productsRepository.index(false, limit, offset))
+        ...(await this.productsRepository.index(
+          false,
+          limit,
+          offset,
+          category
+        ))
       );
     }
 
@@ -52,7 +59,12 @@ export class GetProductsUseCase
       permissions.has(['product:list::available'])
     ) {
       products.push(
-        ...(await this.productsRepository.index(true, limit, offset))
+        ...(await this.productsRepository.index(
+          true,
+          limit,
+          offset,
+          category
+        ))
       );
     }
 

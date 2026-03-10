@@ -35,15 +35,16 @@ export class GetUserController {
           .json(responseOrError.value);
       }
 
+      const token = responseOrError.value;
       return response
         .status(200)
-        .cookie('token', responseOrError.value, {
-          secure: true,
+        .cookie('token', token, {
+          secure: process.env.NODE_ENV === 'production',
           httpOnly: true,
           sameSite: 'lax',
           expires: returnADateSometimeAfter({ date: new Date(), hours: 12 }),
         })
-        .send();
+        .json({ token });
     } catch (err) {
       return response
         .status(500)

@@ -9,7 +9,7 @@
     "dev": "tsnd --transpile-only --exit-child -r tsconfig-paths/register ./src/infra/http/server.ts",
     "test": "dotenv -e .env.test npx prisma migrate deploy && dotenv -e .env.test jest --passWithNoTests",
     "test:watch": "dotenv -e .env.test npx prisma migrate deploy && dotenv -e .env.test jest --passWithNoTests --watch",
-    "prepare": "husky install",
+    "prepare": "husky install || true",
     "commit": "cz",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
@@ -17,6 +17,7 @@
     "lint:fix": "eslint src/** --fix && prettier --write src/**",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"
@@ -74,7 +75,8 @@
     }
   },
   "prisma": {
-    "schema": "./src/infra/prisma/schema.prisma"
+    "schema": "./src/infra/prisma/schema.prisma",
+    "seed": "ts-node prisma/seed.ts"
   },
   "lint-staged": {
     "src/**": [

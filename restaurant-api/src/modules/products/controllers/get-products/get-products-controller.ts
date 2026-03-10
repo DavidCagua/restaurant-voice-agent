@@ -7,16 +7,20 @@ export class GetProductsController {
   constructor(private getProductsUseCase: GetProductsUseCase) {}
 
   async handle(request: CustomRequest, response: Response) {
-    const { limit, offset }: { limit?: number; offset?: number } =
-      request.query;
+    const {
+      limit,
+      offset,
+      category,
+    }: { limit?: number; offset?: number; category?: string } = request.query;
 
     try {
       const decoded = request.decoded as { id: string };
 
       const responseOrError = await this.getProductsUseCase.execute({
         userId: decoded.id,
-        limit,
-        offset,
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
+        category: category as string | undefined,
       });
 
       if (responseOrError.isLeft()) {

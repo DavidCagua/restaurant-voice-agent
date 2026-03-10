@@ -92,3 +92,7 @@ temp/
 
 # Docker
 .dockerignore
+
+#.venv
+.venv/
+./agent-server/.venv/

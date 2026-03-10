@@ -1,15 +1,16 @@
 import requests
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 import os
 from dotenv import load_dotenv
+from src.retry import retry_with_backoff, is_transient_error
 
 load_dotenv()
 
-# API Configuration
-API_BASE_URL = "http://localhost:3000/v1"
-API_TOKEN = ''
+# API Configuration (agent calls restaurant API over HTTP; the API connects to the DB)
+API_BASE_URL = os.getenv("RESTAURANT_API_URL", "http://localhost:3000/v1")
+API_TOKEN = ""
 
 @dataclass
 class Product:
@@ -20,61 +21,64 @@ class Product:
     available: bool
     discount: Optional[float] = None
     images: List[str] = None
+    category: Optional[str] = None
 
-@dataclass
-class Address:
-    id: str
-    name: str
-    address: str
-    city: str
-    state: str
-    postalCode: str
-    address2: Optional[str] = None
-    district: Optional[str] = None
 
-@dataclass
-class Order:
-    customer_name: str
-    customer_phone: str
-    customer_email: str
-    products: List[Dict]
-    delivery_address: Address
-    total_amount: float
-
-def login_to_api(email: str, password: str) -> bool:
-    """Login to the restaurant API and get authentication token."""
+@retry_with_backoff(max_retries=3, base_delay=1.0, max_delay=10.0)
+def _login_to_api_with_retry(email: str, password: str) -> Tuple[bool, Optional[int]]:
+    """Internal login function with retry logic. Returns (success, status_code)."""
     global API_TOKEN
-
+    
     try:
-        response = requests.post(f"{API_BASE_URL}/user", json={
-            "email": email,
-            "password": password
-        })
-
+        response = requests.post(
+            f"{API_BASE_URL}/user",
+            json={"email": email, "password": password},
+            timeout=5.0
+        )
+        
         if response.status_code == 200:
-            # Extract token from cookies
             cookies = response.cookies
             token = cookies.get('token')
             if token:
                 API_TOKEN = token
-                return True
-        return False
+                return True, 200
+        return False, response.status_code
     except Exception as e:
-        print(f"Login error: {e}")
+        # Re-raise if transient, otherwise return False
+        if is_transient_error(None, e):
+            raise
+        return False, None
+
+
+def login_to_api(email: str, password: str) -> bool:
+    """Login to the restaurant API and get authentication token."""
+    try:
+        success, _ = _login_to_api_with_retry(email, password)
+        return success
+    except Exception as e:
+        print(f"Login error after retries: {e}")
         return False
 
-def get_menu() -> List[Product]:
-    """Get the current menu from the restaurant API."""
+@retry_with_backoff(max_retries=3, base_delay=1.0, max_delay=10.0)
+def _get_menu_with_retry(category: Optional[str] = None) -> Tuple[List[Product], Optional[int]]:
+    """Internal menu retrieval with retry logic. Returns (products, status_code)."""
     global API_TOKEN
-    print(f"API_TOKEN: {API_TOKEN}")
-
+    
     if not API_TOKEN:
-        login_to_api("john@example.com", "@Test123")
-
+        if not login_to_api("john@example.com", "@Test123"):
+            return [], None
+    
     try:
-        headers = {"Authorization": f"{API_TOKEN}"}
-        response = requests.get(f"{API_BASE_URL}/products", headers=headers)
-
+        headers = {"Authorization": f"Bearer {API_TOKEN}"}
+        url = f"{API_BASE_URL}/products"
+        if category:
+            url += f"?category={requests.utils.quote(category)}"
+        response = requests.get(
+            url,
+            headers=headers,
+            timeout=5.0
+        )
+        
         if response.status_code == 200:
             products_data = response.json()
             products = []
@@ -86,93 +90,168 @@ def get_menu() -> List[Product]:
                     description=product_data.get('description'),
                     available=product_data.get('available', False),
                     discount=product_data.get('discount'),
-                    images=product_data.get('images', [])
+                    images=product_data.get('images', []),
+                    category=product_data.get('category'),
                 )
                 products.append(product)
-            return products
-        return []
-    except Exception as e:
-        print(f"Error getting menu: {e}")
-        return []
-
-def create_customer_account(first_name: str, last_name: str, email: str, password: str, phone: str) -> bool:
-    """Create a new customer account."""
-    try:
-        response = requests.post(f"{API_BASE_URL}/users", json={
-            "firstName": first_name,
-            "lastName": last_name,
-            "email": email,
-            "password": password,
-            "phone": phone
-        })
-        print(f"Response: {response.text}")
-        return response.status_code == 201
-    except Exception as e:
-        print(f"Error creating account: {e}")
-        return False
-
-def save_delivery_address(name: str, address: str, city: str, state: str, postal_code: str,
-                        district: Optional[str] = None, userId: str = None) -> bool:
-    """Save a delivery address for the customer."""
-    global API_TOKEN
-
-    # Use the hardcoded token that we know works
-    token_to_use = API_TOKEN or 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImZhYmQ5MThiLTEzZTgtNGMyYi1iOTJlLTcwYmM1OWU5MGFhMyIsImVtYWlsIjoiam9obkBleGFtcGxlLmNvbSIsImlhdCI6MTc1MjMzNzIxOSwiZXhwIjoxNzUyMzgwNDE5fQ.cX8Wss5OnPnzk_eaHMHotdXnQW3ttDagW73IM8bPOvw'
-
-    try:
-        headers = {"Authorization": f"Bearer {token_to_use}"}
-        address_data = {
-            "name": name,
-            "address": address,
-            "city": city,
-            "state": state,
-            "postalCode": postal_code,
-            "userId": userId
-        }
-
-        if district:
-            address_data["district"] = district
-
-        response = requests.post(f"{API_BASE_URL}/addresses",
-                               json=address_data,
-                               headers=headers)
-        print(f"Response: {response.text}")
-        return response.status_code == 201
-    except Exception as e:
-        print(f"Error saving address: {e}")
-        return False
-
-def get_delivery_addresses() -> List[Address]:
-    """Get saved delivery addresses."""
-    global API_TOKEN
-
-    # Use the hardcoded token that we know works
-    token_to_use = API_TOKEN or 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImZhYmQ5MThiLTEzZTgtNGMyYi1iOTJlLTcwYmM1OWU5MGFhMyIsImVtYWlsIjoiam9obkBleGFtcGxlLmNvbSIsImlhdCI6MTc1MjMzNzIxOSwiZXhwIjoxNzUyMzgwNDE5fQ.cX8Wss5OnPnzk_eaHMHotdXnQW3ttDagW73IM8bPOvw'
-
-    try:
-        headers = {"Authorization": f"Bearer {token_to_use}"}
-        response = requests.get(f"{API_BASE_URL}/addresses", headers=headers)
-
-        if response.status_code == 200:
-            addresses_data = response.json()
-            addresses = []
-            for addr_data in addresses_data:
-                address = Address(
-                    id=addr_data.get('id'),
-                    name=addr_data.get('name'),
-                    address=addr_data.get('address'),
-                    city=addr_data.get('city'),
-                    state=addr_data.get('state'),
-                    postalCode=addr_data.get('postalCode'),
-                    address2=addr_data.get('address2'),
-                    district=addr_data.get('district')
+            return products, 200
+        
+        # If 401, try to re-authenticate once
+        if response.status_code == 401:
+            if login_to_api("john@example.com", "@Test123"):
+                response = requests.get(
+                    url,
+                    headers={"Authorization": f"Bearer {API_TOKEN}"},
+                    timeout=5.0
                 )
-                addresses.append(address)
-            return addresses
-        return []
+                if response.status_code == 200:
+                    products_data = response.json()
+                    products = []
+                    for product_data in products_data:
+                        product = Product(
+                            id=product_data.get('id'),
+                            name=product_data.get('name'),
+                            price=product_data.get('price'),
+                            description=product_data.get('description'),
+                            available=product_data.get('available', False),
+                            discount=product_data.get('discount'),
+                            images=product_data.get('images', []),
+                            category=product_data.get('category'),
+                        )
+                        products.append(product)
+                    return products, 200
+        
+        return [], response.status_code
     except Exception as e:
-        print(f"Error getting addresses: {e}")
+        if is_transient_error(None, e):
+            raise
+        return [], None
+
+
+def get_menu(category: Optional[str] = None) -> List[Product]:
+    """Get the current menu from the restaurant API, optionally filtered by category."""
+    try:
+        products, _ = _get_menu_with_retry(category=category)
+        return products
+    except Exception as e:
+        print(f"Error getting menu after retries: {e}")
         return []
+
+
+# Main categories for Biela - offer these first (platos principales)
+# Format: (API category key, Spanish display name)
+BIELA_MAIN_CATEGORIES = [
+    ("Burgers", "Hamburguesas"),
+    ("Hot Dogs", "Perros calientes"),
+    ("Fries", "Papas fritas"),
+    ("Chicken Burgers", "Hamburguesas de pollo"),
+    ("Menú Infantil", "Menú infantil"),
+    ("Steak & Ribs", "Carne y costillas"),
+]
+BIELA_DRINKS_CATEGORY = ("Bebidas", "Bebidas")
+
+
+def get_categories(include_drinks: bool = False) -> str:
+    """Return the list of menu categories in Spanish for voice presentation.
+    Use include_drinks=False when offering platos principales; use True after main dish is complete."""
+    categories = BIELA_MAIN_CATEGORIES
+    if include_drinks:
+        categories = list(categories) + [BIELA_DRINKS_CATEGORY]
+    names = [spanish for _, spanish in categories]
+    return "Tenemos: " + ", ".join(names) + "."
+
+@retry_with_backoff(max_retries=3, base_delay=1.0, max_delay=10.0)
+def _create_order_with_retry(
+    first_name: str,
+    last_name: str,
+    phone: str,
+    address: str,
+    district: Optional[str],
+    city: str,
+    state: Optional[str],
+    postal_code: str,
+    payment_method: str,
+    items_json: str,
+) -> Tuple[Optional[str], Optional[int]]:
+    """Internal order creation with retry. Returns (order_id, status_code)."""
+    global API_TOKEN
+
+    if not API_TOKEN:
+        if not login_to_api("john@example.com", "@Test123"):
+            return None, None
+
+    try:
+        items = json.loads(items_json)
+        headers = {"Authorization": f"Bearer {API_TOKEN}"}
+        payload = {
+            "customerName": first_name,
+            "customerLastName": last_name,
+            "customerPhone": phone,
+            "deliveryAddress": address,
+            "district": district or None,
+            "city": city,
+            "state": state or None,
+            "postalCode": postal_code,
+            "paymentMethod": payment_method,
+            "items": [
+                {
+                    "productId": item.get("product_id"),
+                    "productName": item.get("product_name"),
+                    "quantity": int(item.get("quantity", 1)),
+                    "unitPrice": float(item.get("unit_price", 0)),
+                }
+                for item in items
+            ],
+        }
+        response = requests.post(
+            f"{API_BASE_URL}/orders",
+            json=payload,
+            headers=headers,
+            timeout=5.0,
+        )
+        if response.status_code == 201:
+            data = response.json()
+            return data.get("id"), 201
+        return None, response.status_code
+    except Exception as e:
+        if is_transient_error(None, e):
+            raise
+        return None, None
+
+
+def create_order(
+    first_name: str,
+    last_name: str,
+    phone: str,
+    address: str,
+    district: Optional[str],
+    city: str,
+    state: Optional[str],
+    postal_code: str,
+    payment_method: str,
+    items_json: str,
+) -> Optional[str]:
+    """Create an order with customer data, address, payment method and items.
+    items_json: [{"product_id": "...", "product_name": "Barracuda", "quantity": 1, "unit_price": 28000}]
+    Returns order id on success, None otherwise."""
+    try:
+        order_id, _ = _create_order_with_retry(
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            address=address,
+            district=district,
+            city=city,
+            state=state,
+            postal_code=postal_code,
+            payment_method=payment_method,
+            items_json=items_json,
+        )
+        return order_id
+    except Exception as e:
+        print(f"Error creating order after retries: {e}")
+        return None
+
 
 def calculate_order_total(products: List[Dict]) -> float:
     """Calculate the total amount for an order."""
@@ -194,13 +273,13 @@ def format_menu_for_voice(products: List[Product]) -> str:
 
     menu_text = "Aquí está nuestro menú:\n\n"
 
-    for i, product in enumerate(products, 1):
+    for product in products:
         if product.available:
-            price_text = f"${product.price:.2f}"
+            price_text = f"${int(product.price)}"
             if product.discount:
                 price_text += f" (con descuento del {product.discount}%)"
 
-            menu_text += f"{i}. {product.name} - {price_text}\n"
+            menu_text += f"{product.name} - {price_text}\n"
             menu_text += f"   {product.description}\n\n"
 
     menu_text += "¿Qué te gustaría ordenar?"

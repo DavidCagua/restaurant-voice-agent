@@ -27,16 +27,21 @@ export class InMemoryProductsRepository implements IProductsRepository {
   async index(
     onlyAvailable: boolean,
     limit?: number | undefined,
-    offset?: number | undefined
+    offset?: number | undefined,
+    category?: string | undefined
   ): Promise<Omit<Product, 'createdBy'>[]> {
-    const products = this.products
-      .filter((product) => (onlyAvailable ? product.available : product))
-      .map((product) => ({
-        ...product,
-        createdBy: undefined,
-      }));
-
-    return products;
+    let filtered = this.products.filter((product) =>
+      onlyAvailable ? product.available : true
+    );
+    if (category) {
+      filtered = filtered.filter(
+        (p) => (p as Product & { category?: string }).category === category
+      );
+    }
+    return filtered.map((product) => ({
+      ...product,
+      createdBy: undefined,
+    }));
   }
 
   async delete(criteria: string[]): Promise<void> {

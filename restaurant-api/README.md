@@ -123,31 +123,129 @@ All endpoints are prefixed with `/v1`
 
 ### Authentication Endpoints
 
-- `POST /v1/user` - User login
+- `POST /v1/user` - User login (returns JWT in Set-Cookie)
 - `POST /v1/users` - Create new user account
-- `PUT /v1/users/password` - Change user password
+- `PUT /v1/user/security` - Change password (requires authentication)
 
 ### Product Endpoints
 
 - `GET /v1/products` - Get all products (requires authentication)
 - `POST /v1/products` - Create a new product (requires authentication)
+- `DELETE /v1/product` - Delete a product (requires authentication; id in body)
 
 ### Address Endpoints
 
 - `GET /v1/addresses` - Get all addresses for authenticated user
 - `POST /v1/addresses` - Create a new address
-- `PUT /v1/addresses/:id` - Update an address
-- `DELETE /v1/addresses/:id` - Delete an address
+- `PUT /v1/address` - Update an address (requires authentication; id in body)
+- `DELETE /v1/address` - Delete an address (requires authentication; id in body)
 
 ### Authentication
 
-Most endpoints require authentication via JWT token. Include the token in the `Authorization` header:
+Protected endpoints require a JWT in the **Authorization** header:
 
 ```
 Authorization: Bearer <your_token>
 ```
 
-Or as a cookie named `token` (for login endpoint).
+Login (`POST /v1/user`) returns the token in a **Set-Cookie** header; for Postman or API clients, use that token value in the `Authorization` header on subsequent requests.
+
+---
+
+## 📮 Testing with Postman
+
+**Base URL:** `http://localhost:3000/v1` (with API running: `npm run dev`)
+
+### 1. Login (get token)
+
+| Field | Value |
+|-------|--------|
+| **Method** | `POST` |
+| **URL** | `http://localhost:3000/v1/user` |
+| **Body** | raw → JSON |
+
+```json
+{
+  "email": "john@example.com",
+  "password": "@Test123"
+}
+```
+
+- Send the request. The response body is JSON: `{ "token": "eyJ..." }`. Copy the `token` value.
+- On protected requests, add header: **Authorization** = `Bearer <paste_token>` (or use **Authorization** → Bearer Token and paste the token).
+
+**Optional – auto-save token in Postman:** In the login request **Tests** tab, add:
+
+```js
+const json = pm.response.json();
+if (json.token) pm.environment.set("auth_token", json.token);
+```
+
+Create an environment and set variable `auth_token` (leave value empty). Then on protected requests use **Authorization** → Bearer Token → Token: `{{auth_token}}`.
+
+### 2. Get products (menu)
+
+| Field | Value |
+|-------|--------|
+| **Method** | `GET` |
+| **URL** | `http://localhost:3000/v1/products` |
+| **Headers** | `Authorization: Bearer <paste_token_here>` |
+
+Use the token from the login cookie (or `{{auth_token}}` if you set it).
+
+### 3. Create user (register)
+
+| Field | Value |
+|-------|--------|
+| **Method** | `POST` |
+| **URL** | `http://localhost:3000/v1/users` |
+| **Body** | raw → JSON |
+
+```json
+{
+  "firstName": "María",
+  "lastName": "García",
+  "email": "maria@example.com",
+  "password": "@Test123",
+  "phone": "+573001112233"
+}
+```
+
+### 4. Create address (requires auth)
+
+| Field | Value |
+|-------|--------|
+| **Method** | `POST` |
+| **URL** | `http://localhost:3000/v1/addresses` |
+| **Headers** | `Authorization: Bearer <token>` |
+| **Body** | raw → JSON |
+
+```json
+{
+  "name": "Casa",
+  "address": "Calle 10 # 20-30",
+  "city": "Pasto",
+  "state": "Nariño",
+  "postalCode": "150001",
+  "district": "Centro"
+}
+```
+
+### 5. Get addresses
+
+| Field | Value |
+|-------|--------|
+| **Method** | `GET` |
+| **URL** | `http://localhost:3000/v1/addresses` |
+| **Headers** | `Authorization: Bearer <token>` |
+
+### Quick checklist
+
+1. Start DB: `npm run docker:up`
+2. Run migrations: `npm run migrate:dev`
+3. Seed data: `npm run db:seed`
+4. Start API: `npm run dev`
+5. In Postman: login → copy token from cookie → use `Authorization: Bearer <token>` on protected requests.
 
 ## 🛠️ Available Scripts
 
