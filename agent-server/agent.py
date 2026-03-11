@@ -13,6 +13,11 @@ from livekit.agents.telemetry import set_tracer_provider
 from livekit.agents import AgentSession, Agent, RoomInputOptions, function_tool
 from livekit.agents import llm
 from livekit.agents.voice import ModelSettings
+from livekit.agents.voice.background_audio import (
+    BackgroundAudioPlayer,
+    AudioConfig,
+    BuiltinAudioClip,
+)
 from typing import AsyncIterable
 from livekit import rtc
 from livekit.plugins import (
@@ -181,10 +186,10 @@ class CustomTurnDetector:
 class RestaurantAssistant(Agent):
     def __init__(self, obs_ctx: ObservabilityContext = None) -> None:
         super().__init__(
-            instructions="""Tu nombre es Daniela y eres la asistente amigable de Biela, hamburguesería en la ciudad de Pasto, Colombia. Ayudas a los clientes a ordenar.
+            instructions="""Tu nombre es Diana y eres la asistente amigable de Biela, hamburguesería en la ciudad de Pasto, Colombia. Ayudas a los clientes a ordenar.
 
 IMPORTANTE - Flujo de pedido:
-1. Saluda: "Hola, ¿cómo estás? Bienvenido a Biela. Soy Daniela."
+1. Saluda: "Hola, ¿cómo estás? Bienvenido a Biela. Soy Diana."
 2. Pregunta: "¿Te gustaría ver el menú o ya sabes qué quieres ordenar?"
 3. Si dice menú: ofrece categorías (get_categories con include_drinks=false): "Tenemos hamburguesas, perros calientes, papas fritas, hamburguesas de pollo, menú infantil, y carne y costillas. ¿Qué categoría te gustaría ver?"
 4. Si ya sabe qué quiere: que diga el producto y búscalo en el menú
@@ -211,39 +216,7 @@ IMPORTANTE - Evita redundancia:
 Siempre pregunta primero: menú o producto específico. Si menú → categorías → get_menu por categoría. Si ya sabe → busca el producto. Bebidas solo después del plato principal."""
         )
 
-        # Initialize thinking sounds
-        self.thinking_sounds = {
-            "thinking": "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
-            "processing": "https://www.soundjay.com/misc/sounds/clock-ticking-1.wav",
-            "searching": "https://www.soundjay.com/misc/sounds/typewriter-1.wav"
-        }
-        self.current_sound = None
         self.obs_ctx = obs_ctx
-
-    async def play_thinking_sound(self, sound_type: str = "thinking"):
-        """Play a thinking sound during tool execution (only when room is available, e.g. not in console)."""
-        room = getattr(self, "room", None)
-        if not room or sound_type not in self.thinking_sounds:
-            return
-        sound_url = self.thinking_sounds[sound_type]
-        try:
-            await room.play_audio(sound_url, loop=True)
-            self.current_sound = sound_url
-        except Exception as e:
-            print(f"Error playing thinking sound: {e}")
-
-    async def stop_thinking_sound(self):
-        """Stop the current thinking sound."""
-        room = getattr(self, "room", None)
-        if not room or not self.current_sound:
-            self.current_sound = None
-            return
-        try:
-            await room.stop_audio()
-        except Exception as e:
-            print(f"Error stopping thinking sound: {e}")
-        finally:
-            self.current_sound = None
 
     @function_tool()
     async def get_categories(self, include_drinks: bool = False) -> str:
@@ -258,8 +231,6 @@ Siempre pregunta primero: menú o producto específico. Si menú → categorías
         
         if self.obs_ctx:
             self.obs_ctx.log_tool_call_start(tool_name)
-        
-        await self.play_thinking_sound("searching")
 
         try:
             products = get_menu(category=category)
@@ -274,9 +245,6 @@ Siempre pregunta primero: menú o producto específico. Si menú → categorías
             if self.obs_ctx:
                 self.obs_ctx.log_event("tool_call_error", "tool_call", tool_name=tool_name, error=str(e))
         finally:
-            # Stop thinking sound
-            await self.stop_thinking_sound()
-            
             if self.obs_ctx:
                 latency_ms = (time.time() - start_time) * 1000
                 self.obs_ctx.log_tool_call_end(tool_name, latency_ms)
@@ -305,8 +273,6 @@ Siempre pregunta primero: menú o producto específico. Si menú → categorías
         if self.obs_ctx:
             self.obs_ctx.log_tool_call_start(tool_name)
 
-        await self.play_thinking_sound("processing")
-
         try:
             order_id = create_order(
                 first_name=first_name,
@@ -329,7 +295,6 @@ Siempre pregunta primero: menú o producto específico. Si menú → categorías
             if self.obs_ctx:
                 self.obs_ctx.log_event("tool_call_error", "tool_call", tool_name=tool_name, error=str(e))
         finally:
-            await self.stop_thinking_sound()
             if self.obs_ctx:
                 latency_ms = (time.time() - start_time) * 1000
                 self.obs_ctx.log_tool_call_end(tool_name, latency_ms)
@@ -383,16 +348,13 @@ async def entrypoint(ctx: agents.JobContext):
         print(f"Warning: Could not start health check server: {e}")
     
     # Initialize observability context
-    # Use room/job id when present; in console mode ctx uses mocks → treat as missing and use UUID
+    # Use job_id for session_id (avoid room.sid - it's a coroutine and can block/hang)
     session_id = str(uuid.uuid4())
     try:
-        candidate = None
-        if hasattr(ctx, "room") and ctx.room and hasattr(ctx.room, "sid"):
-            candidate = str(ctx.room.sid)
-        elif hasattr(ctx, "job_id"):
+        if hasattr(ctx, "job_id") and ctx.job_id:
             candidate = str(ctx.job_id)
-        if candidate and "Mock" not in candidate and "mock" not in candidate:
-            session_id = candidate
+            if candidate and "Mock" not in candidate and "mock" not in candidate:
+                session_id = candidate
     except Exception:
         pass
 
@@ -413,8 +375,8 @@ async def entrypoint(ctx: agents.JobContext):
     try:
         tts = elevenlabs.TTS(
             model=tts_model,
-            # voice_id="86V9x9hrQds83qf7zaGn",  # Marcela (Colombian); baseline premade is rola ODq5zmih8GrVes37Dizd
-            voice_id="ODO4sbmD3pTjhgRVVRP6",
+            voice_id="86V9x9hrQds83qf7zaGn",  # Marcela (Colombian); baseline premade is rola ODq5zmih8GrVes37Dizd
+            # voice_id="ODO4sbmD3pTjhgRVVRP6",
             language="es",
         )
     except Exception as e:
@@ -437,7 +399,6 @@ async def entrypoint(ctx: agents.JobContext):
     # Create agent with observability context
     agent = RestaurantAssistant(obs_ctx=obs_ctx)
     
-    # Wrap session start with timing and error handling
     try:
         # Create room input options with optional noise cancellation (LiveKit Cloud only)
         room_input_options_kwargs = {}
@@ -457,34 +418,37 @@ async def entrypoint(ctx: agents.JobContext):
                 agent=agent,
                 room_input_options=RoomInputOptions(**room_input_options_kwargs),
             )
+
+        # Thinking sounds per https://docs.livekit.io/agents/logic/external-data/#-thinking-sounds
+        background_audio = BackgroundAudioPlayer(
+            thinking_sound=[
+                AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING, volume=0.8),
+                AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.7),
+            ],
+        )
+        await background_audio.start(room=ctx.room, agent_session=session)
+
     except Exception as e:
         obs_ctx.log_event("session_start_error", "session", error=str(e))
         print(f"Error starting session: {e}")
         raise
 
-    await ctx.connect()
-    
-    # Log reasoning start before generating reply
+    # Generate initial reply BEFORE ctx.connect() — connect blocks until user leaves
     obs_ctx.log_reasoning_start()
     reasoning_start = time.time()
-    
-    # Generate initial reply with timing and error handling
     try:
         with obs_ctx.time_stage("reasoning"):
             await session.generate_reply(
                 instructions="Saluda: Hola, ¿cómo estás? Bienvenido a Biela, hamburguesería en Pasto. Soy Daniela. Pregunta: ¿Te gustaría ver el menú o ya sabes qué quieres ordenar?"
             )
-        
-        # Log reasoning end
         reasoning_latency = (time.time() - reasoning_start) * 1000
         obs_ctx.log_reasoning_end(reasoning_latency)
-        
-        # Log TTS start (TTS happens asynchronously after generate_reply)
         obs_ctx.log_tts_start()
     except Exception as e:
         obs_ctx.log_event("reasoning_error", "reasoning", error=str(e))
         print(f"Error generating reply: {e}")
-        # Note: LiveKit will handle the error, but we log it for observability
+
+    await ctx.connect()
 
 
 if __name__ == "__main__":

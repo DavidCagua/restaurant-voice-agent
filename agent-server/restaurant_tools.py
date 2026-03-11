@@ -10,6 +10,7 @@ load_dotenv()
 
 # API Configuration (agent calls restaurant API over HTTP; the API connects to the DB)
 API_BASE_URL = os.getenv("RESTAURANT_API_URL", "http://localhost:3000/v1")
+print(f"API_BASE_URL: {API_BASE_URL}")
 API_TOKEN = ""
 
 @dataclass
