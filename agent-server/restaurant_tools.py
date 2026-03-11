@@ -183,6 +183,23 @@ def _create_order_with_retry(
 
     try:
         items = json.loads(items_json)
+        # Build name->id map for resolving missing product IDs (LLM often omits them)
+        products, _ = _get_menu_with_retry(category=None)
+        name_to_id = {p.name.strip().lower(): p.id for p in products} if products else {}
+
+        resolved_items = []
+        for item in items:
+            pid = str(item.get("product_id") or item.get("productId") or "")
+            pname = str(item.get("product_name") or item.get("productName") or "")
+            if not pid and pname:
+                pid = name_to_id.get(pname.strip().lower(), "")
+            resolved_items.append({
+                "productId": pid,
+                "productName": pname,
+                "quantity": int(item.get("quantity", 1)),
+                "unitPrice": float(item.get("unit_price") or item.get("unitPrice") or 0),
+            })
+
         headers = {"Authorization": f"Bearer {API_TOKEN}"}
         payload = {
             "customerName": first_name,
@@ -194,15 +211,7 @@ def _create_order_with_retry(
             "state": state or None,
             "postalCode": postal_code,
             "paymentMethod": payment_method,
-            "items": [
-                {
-                    "productId": str(item.get("product_id") or item.get("productId") or ""),
-                    "productName": str(item.get("product_name") or item.get("productName") or ""),
-                    "quantity": int(item.get("quantity", 1)),
-                    "unitPrice": float(item.get("unit_price") or item.get("unitPrice") or 0),
-                }
-                for item in items
-            ],
+            "items": resolved_items,
         }
         response = requests.post(
             f"{API_BASE_URL}/orders",
