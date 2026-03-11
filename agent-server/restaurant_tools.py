@@ -196,10 +196,10 @@ def _create_order_with_retry(
             "paymentMethod": payment_method,
             "items": [
                 {
-                    "productId": item.get("product_id"),
-                    "productName": item.get("product_name"),
+                    "productId": str(item.get("product_id") or item.get("productId") or ""),
+                    "productName": str(item.get("product_name") or item.get("productName") or ""),
                     "quantity": int(item.get("quantity", 1)),
-                    "unitPrice": float(item.get("unit_price", 0)),
+                    "unitPrice": float(item.get("unit_price") or item.get("unitPrice") or 0),
                 }
                 for item in items
             ],
@@ -213,6 +213,12 @@ def _create_order_with_retry(
         if response.status_code == 201:
             data = response.json()
             return data.get("id"), 201
+        # Log failure for debugging
+        try:
+            err_body = response.json()
+            print(f"[create_order] API error {response.status_code}: {err_body}", flush=True)
+        except Exception:
+            print(f"[create_order] API error {response.status_code}: {response.text[:500]}", flush=True)
         return None, response.status_code
     except Exception as e:
         if is_transient_error(None, e):
